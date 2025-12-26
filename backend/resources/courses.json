@@ -1,0 +1,60 @@
+[
+  {
+    "id": 1,
+    "title": "Python for Data Science",
+    "url": "https://www.coursera.org/specializations/python",
+    "skills": [
+      "python",
+      "data analysis",
+      "sql"
+    ],
+    "level": "beginner",
+    "type": "course"
+  },
+  {
+    "id": 2,
+    "title": "FastAPI Tutorial",
+    "url": "https://fastapi.tiangolo.com/tutorial/",
+    "skills": [
+      "fastapi",
+      "api",
+      "python",
+      "rest"
+    ],
+    "level": "beginner",
+    "type": "docs"
+  },
+  {
+    "id": 3,
+    "title": "Sentence Transformers: Semantic Search",
+    "url": "https://www.sbert.net/",
+    "skills": [
+      "nlp",
+      "machine learning"
+    ],
+    "level": "intermediate",
+    "type": "docs"
+  },
+  {
+    "id": 4,
+    "title": "Docker Getting Started",
+    "url": "https://docs.docker.com/get-started/",
+    "skills": [
+      "docker"
+    ],
+    "level": "beginner",
+    "type": "docs"
+  },
+  {
+    "id": 5,
+    "title": "React + Next.js Learn",
+    "url": "https://nextjs.org/learn",
+    "skills": [
+      "react",
+      "typescript",
+      "javascript"
+    ],
+    "level": "beginner",
+    "type": "course"
+  }
+]
