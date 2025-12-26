@@ -1,29 +1,78 @@
-from typing import List, Tuple, Set
-from sentence_transformers import SentenceTransformer, util
-from .parsing import extract_skills
+# backend/app/services/matching.py
+import os
+import re
+import logging
+from functools import lru_cache
+from typing import List, Optional
 
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+logger = logging.getLogger(__name__)
 
-def extract_required_skills_from_jd(text: str) -> List[str]:
-    return extract_skills(text)
+DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-def compute_match_score(resume_skills: List[str], jd_skills: List[str]) -> Tuple[float, List[str], List[str]]:
-    set_resume: Set[str] = set(resume_skills)
-    set_jd: Set[str] = set(jd_skills)
 
-    missing = sorted(list(set_jd - set_resume))
-    weak: List[str] = []  # future enhancement
+def _simple_tokenize(s: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9\+\#\.\-]{2,}", (s or "").lower()))
 
-    if not jd_skills:
-        return 0.0, missing, weak
 
-    resume_text = "; ".join(resume_skills) or "no skills"
-    jd_text = "; ".join(jd_skills)
+def _jaccard(a: str, b: str) -> float:
+    A, B = _simple_tokenize(a), _simple_tokenize(b)
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
 
-    emb_resume = model.encode(resume_text, convert_to_tensor=True)
-    emb_jd = model.encode(jd_text, convert_to_tensor=True)
 
-    sim = util.cos_sim(emb_resume, emb_jd).item()  # -1..1
-    score = max(0.0, min(100.0, (sim + 1) * 50))   # map to 0..100
+@lru_cache(maxsize=1)
+def _get_sentence_transformer():
+    """
+    Lazy-load the SentenceTransformer ONLY when needed, and only if enabled.
 
-    return score, missing, weak
+    Default is disabled on Cloud Run to avoid:
+      - cold-start downloads
+      - HF rate limits (429)
+      - startup crashes (container never binds PORT)
+    """
+    if os.getenv("USE_SENTENCE_TRANSFORMER", "0") != "1":
+        return None
+
+    # Cache location must be writable on Cloud Run (use /tmp)
+    os.environ.setdefault("HF_HOME", "/tmp/hf")
+    os.environ.setdefault("TRANSFORMERS_CACHE", "/tmp/hf/transformers")
+
+    # HF docs: can disable hf-xet usage via env var if it causes issues
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")  # optional but recommended  [oai_citation:1‡Hugging Face](https://huggingface.co/docs/huggingface_hub/en/package_reference/environment_variables?utm_source=chatgpt.com)
+
+    model_name = os.getenv("ST_MODEL", DEFAULT_MODEL)
+
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(model_name)
+
+
+def _cosine_sim(v1, v2) -> float:
+    # vectors are already normalized when normalize_embeddings=True
+    return float(sum(a * b for a, b in zip(v1, v2)))
+
+
+def compute_match_score(resume_text: str, jd_text: str) -> float:
+    """
+    Returns match score in [0..1-ish].
+    If transformer isn't enabled/available, fallback to a stable keyword overlap score.
+    """
+    st = None
+    try:
+        st = _get_sentence_transformer()
+        if st is not None:
+            emb = st.encode([resume_text, jd_text], normalize_embeddings=True)
+            return _cosine_sim(emb[0], emb[1])
+    except Exception as e:
+        # If HF rate-limits / model download fails, do NOT crash the app.
+        logger.exception("SentenceTransformer failed; using fallback. Error: %s", e)
+
+    return _jaccard(resume_text, jd_text)
+
+
+def extract_required_skills_from_jd(jd_text: str) -> List[str]:
+    # keep your existing implementation if you already have one;
+    # minimal safe version:
+    tokens = sorted(_simple_tokenize(jd_text))
+    # just return top-ish tokens as "skills" baseline (replace with your extractor if present)
+    return tokens[:30]
